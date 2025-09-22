@@ -70,13 +70,14 @@ def main():
             os.makedirs(downloads_dir, exist_ok=True)
         all_instructors_urls = processor.driver.find_elements(By.XPATH, "//td/a[contains(@href, 'instructor-record')]")
         all_instructors_usernames = processor.driver.find_elements(By.XPATH, "//td/a[contains(@href, 'mail')]/parent::td")
+        logger.info("Fetching all instructors' URLs and usernames...")
         for instructor_url, instructor_username in zip(all_instructors_urls, all_instructors_usernames):
             url = instructor_url.get_attribute("href")
             name = clean_username(instructor_username.text.split('\n')[0].strip())
             if name == "unknown":
                 name = f"No username ({instructor_username.text.split('\n')[1].strip()})"
             instructors_info.append((url, name))
-        logger.info("Fetched all instructors' URLs and usernames")
+        logger.info("Fetched all instructors' URLs and usernames. Starting processing...")
         for user_url, username in instructors_info:
             try:
                 safe_navigate_to_url(processor.driver, user_url)
@@ -99,13 +100,13 @@ def main():
                 for record_element in all_records_elements:
                     record_url = record_element.get_attribute("href")
                     all_records.append(record_url)
-                for record_url in all_records:
+                for i, record_url in enumerate(all_records):
                     safe_navigate_to_url(processor.driver, record_url)
                     # Find file link
                     link_selector = (By.XPATH, "//a[@title= 'View']")
-                    link = check_element_exists(processor.driver, link_selector, timeout=3)
+                    link = check_element_exists(processor.driver, link_selector, timeout=1)
                     if not link:
-                        logger.info(f"No file found for this record")
+                        logger.info(f"No file found for {username}'s record {i + 1}/{len(all_records)}")
                         continue
                     file_url = get_element_attribute(processor.driver, link_selector, "href")
                     file_name = get_element_text(processor.driver, link_selector, timeout=3)
@@ -113,7 +114,7 @@ def main():
                         local_path = os.path.join(owner_folder, file_name)
                         # Additional check: skip if file already exists locally
                         if os.path.exists(local_path):
-                            logger.info(f"File already exists locally, skipping: {local_path}")
+                            logger.info(f"File already exists locally, skipping: {username}/{file_name}")
                             continue
                         # Download file immediately
                         try:

@@ -117,7 +117,7 @@ def input_element(driver, by_locator, text: str, timeout: int = 10, max_retries:
         return False
 
 
-def get_undetected_driver(headless: bool = False, max_retries: int = 3) -> Optional[webdriver.Chrome]:
+def get_undetected_driver(headless: bool = True, max_retries: int = 3) -> Optional[webdriver.Chrome]:
     """Create undetected Chrome driver with comprehensive error handling."""
     for attempt in range(max_retries):
         driver = None

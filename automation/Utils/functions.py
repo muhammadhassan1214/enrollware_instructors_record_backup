@@ -1,5 +1,5 @@
 from selenium.webdriver.common.by import By
-from automation.Utils.utils import (
+from .utils import (
     safe_navigate_to_url,
     check_element_exists,
     input_element,
