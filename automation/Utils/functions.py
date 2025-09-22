@@ -1,15 +1,27 @@
 from selenium.webdriver.common.by import By
-from .utils import safe_navigate_to_url, check_element_exists, input_element, click_element_by_js, select_by_text, logger
+from automation.Utils.utils import (
+    safe_navigate_to_url,
+    check_element_exists,
+    input_element,
+    click_element_by_js,
+    select_by_text
+)
 import os
 import re
 import time
+import logging
 from dotenv import load_dotenv
 
 # Load environment variables and validate
 load_dotenv()
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 # Validate required environment variables
 REQUIRED_ENV_VARS = ["ENROLLWARE_USERNAME", "ENROLLWARE_PASSWORD"]
+
 
 def validate_environment_variables() -> bool:
     missing_vars = [var for var in REQUIRED_ENV_VARS if not os.getenv(var)]
@@ -17,6 +29,7 @@ def validate_environment_variables() -> bool:
         logger.error(f"Missing required environment variables: {missing_vars}")
         return False
     return True
+
 
 def login_to_enrollware_and_navigate_to_instructor_records(driver, max_retries: int = 3) -> bool:
     if not validate_environment_variables():
@@ -89,19 +102,54 @@ def navigate_to_instructor_records(driver, max_retries: int = 3) -> bool:
     logger.error("Failed to navigate to Instructor Records after all attempts")
     return False
 
+
 def clean_username(entry: str) -> str:
-    stop_words = {'monitoring', 'complete', 'needs'}
-    parts = [p.strip() for p in entry.split(',')]
-    # Extract all valid words before comma
-    candidates = re.findall(r'[A-Za-z\-]+', parts[0])
-    # Filter out stop words (case-insensitive)
-    last_name_clean = 'unknown'
-    for word in reversed(candidates):
-        if word.lower() not in stop_words:
-            last_name_clean = word
-            break
+    # Status phrases and non-name words to remove
+    status_patterns = [
+        r"\*\*.*?\*\*",  # **Monitoring Complete** etc.
+        r"\(.*?\)",  # (Complete and sent to Nathan) etc.
+        r"CODEBLUE CPR CLASSES",  # custom status phrase
+        r"Completed with Nathan Shell",  # custom status phrase
+        r"Complete and sent to Nathan",  # custom status phrase
+        r"Needs Monitoring",  # custom status phrase
+        r"Monitoring Complete",  # custom status phrase
+        r"Complete",  # custom status phrase
+        r"sent to Nathan",  # custom status phrase
+    ]
+    # Remove status phrases
+    clean_entry = entry
+    for pat in status_patterns:
+        clean_entry = re.sub(pat, '', clean_entry, flags=re.IGNORECASE)
+    # Split by comma
+    parts = [p.strip() for p in clean_entry.split(',')]
+    # If only one part, try to split by whitespace for first/last name
+    if len(parts) == 1:
+        words = [w for w in parts[0].split() if w]
+        if len(words) == 2:
+            # e.g. 'ZACHARIAS JOSEPH' => 'JOSEPH ZACHARIAS'
+            return f"{words[1]} {words[0]}"
+        elif len(words) > 2:
+            # e.g. 'Williams-Patterson Nickesha' => 'Nickesha Williams-Patterson'
+            return f"{words[-1]} {' '.join(words[:-1])}"
+        elif len(words) == 1:
+            return words[0]
+        else:
+            return "unknown"
+    # Last name logic
+    last_name = parts[0]
+    last_name_words = [w for w in re.findall(r'[A-Za-z\-]+', last_name) if w]
+    last_name_clean = ' '.join(last_name_words) if last_name_words else 'unknown'
+    # First name logic
     first_name = parts[1] if len(parts) > 1 else ''
-    first_name_clean = re.sub(r'[^A-Za-z\- ]', '', first_name).strip()
-    if first_name_clean:
-        return f"{first_name_clean} {last_name_clean}"
-    return last_name_clean
+    first_name_words = [w for w in re.findall(r'[A-Za-z\-]+', first_name) if w]
+    first_name_clean = ' '.join(first_name_words) if first_name_words else ''
+    # If first name is missing, return last name or unknown
+    if not first_name_clean:
+        return last_name_clean if last_name_clean != 'unknown' else 'unknown'
+    return f"{first_name_clean} {last_name_clean}"
+
+
+# test_data = ["Monitoring Complete 7/11Henderson, Stacy", ", ", "Abdul-Majied, Aishah", "Albers Needs Monitoring, Becca",
+#              "Augustin Monitoring Complete, Francesca", "Zingarelli, Samantha Needs Monitoring", "ZACHARIAS, JOSEPH",
+#              "Williams-Patterson, Nickesha", "Williams Monitoring Complete (Completed with Nathan Shell), Joey",
+#              "Williams, Ann Marie (Complete and sent to Nathan)", "smith CODEBLUE CPR CLASSES, jareem"]
