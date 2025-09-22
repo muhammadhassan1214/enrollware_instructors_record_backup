@@ -11,7 +11,7 @@ This project automates the backup of instructor records from Enrollware, downloa
 - Robust error handling and logging
 
 ## Prerequisites
-- Python 3.8+
+- Python 3.10+
 - Google Chrome browser
 - ChromeDriver (compatible with your Chrome version)
 - Enrollware admin credentials
@@ -21,7 +21,7 @@ This project automates the backup of instructor records from Enrollware, downloa
 ## Installation
 1. **Clone the repository:**
    ```sh
-   git clone <https://github.com/muhammadhassan1214/enrollware_instructors_record_backup.git>
+   git clone https://github.com/muhammadhassan1214/enrollware_instructors_record_backup.git
    cd enrollware_instructors_record_backup
    ```
 2. **Install dependencies:**
@@ -47,15 +47,16 @@ This project automates the backup of instructor records from Enrollware, downloa
 ├── automation/
 │   ├── main.py                # Main workflow script
 │   ├── Utils/
-│   │   ├── functions.py       # Core logic (login, username cleaning)
-│   │   ├── drive_uploader.py  # Google Drive helpers
-│   │   ├── utils.py           # Selenium helpers
-│   │   ├── credentials.json   # Google OAuth credentials
-│   │   ├── token.json         # Generated after first Google login
-│   └── downloads/             # Downloaded files (if used)
+│       ├── functions.py       # Core logic (login, username cleaning)
+│       ├── drive_uploader.py  # Google Drive helpers
+│       ├── utils.py           # Selenium helpers
+│       ├── credentials.json   # Google OAuth credentials
+│       ├── token.json         # Generated after first Google login
 ├── Instructor records/        # Local backup of instructor files
 ├── README.md                  # This guide
 ├── Example env.env            # Example environment file
+├── .env                       # Your environment variables (not in repo)
+├── requirements.txt           # Python dependencies
 ```
 
 ## Customization
