@@ -119,16 +119,6 @@ def input_element(driver, by_locator, text: str, timeout: int = 10, max_retries:
 
 def get_undetected_driver(headless: bool = True, max_retries: int = 3) -> Optional[webdriver.Chrome]:
     """Create undetected Chrome driver with comprehensive error handling."""
-    # Clear webdriver-manager ChromeDriver cache
-    cache_dir = os.path.expanduser(r"C:\Users\Rachael Shell\.wdm\drivers\chromedriver\win64")
-    if os.path.exists(cache_dir):
-        try:
-            import shutil
-            shutil.rmtree(cache_dir)
-            logger.info(f"Cleared ChromeDriver cache at: {cache_dir}")
-        except Exception as e:
-            logger.warning(f"Could not clear ChromeDriver cache: {e}")
-
     for attempt in range(max_retries):
         driver = None
         try:
