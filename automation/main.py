@@ -83,6 +83,10 @@ def main():
                 safe_navigate_to_url(processor.driver, user_url)
                 # Ensure local and Drive folder for user
                 owner_folder = os.path.join(downloads_dir, username)
+                # Check if owner folder already exists, skip if it does
+                if os.path.exists(owner_folder):
+                    logger.info(f"Owner folder already exists, skipping: {username}")
+                    continue
                 if not os.path.exists(owner_folder):
                     os.makedirs(owner_folder, exist_ok=True)
                 owner_drive_id = get_folder_id(drive_service, username, root_folder_id)
@@ -122,7 +126,7 @@ def main():
                             if response.status_code == 200:
                                 with open(local_path, "wb") as f:
                                     shutil.copyfileobj(response.raw, f)
-                                logger.info(f"Downloaded: {local_path}")
+                                logger.info(f"Downloaded: {username}/{file_name}")
                                 # Upload to Google Drive immediately
                                 upload_or_update_file(drive_service, owner_drive_id, local_path, file_name)
                             else:
