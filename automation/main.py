@@ -13,7 +13,7 @@ from enroll_nationwide_api.api_endpoints import APIEndpoints
 from Utils.utils import get_undetected_driver, get_element_text
 from Utils.functions import (
     login_to_enrollware_and_navigate_to_instructor_records,
-    clean_username, get_element_value, get_checkbox_value,
+    get_element_value, get_checkbox_value,
     instructor_is_valid, get_best_match_id
 )
 
@@ -169,6 +169,14 @@ def upload_document(api_client: APIClient, instructor_id: str, file_path: str) -
             return False
         logger.error(f"Failed to upload document {file_path} for instructor {instructor_id}: {exc}")
         return False
+    finally:
+        # Always delete local file after upload attempt to keep download-dir clean.
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                logger.info(f"Deleted local file after upload attempt: {file_path}")
+            except Exception as delete_exc:
+                logger.warning(f"Could not delete local file {file_path}: {delete_exc}")
 
 
 class CreateInstructorsBackup:
@@ -215,11 +223,10 @@ def append_to_csv(csv_path: str, row: dict) -> None:
         })
 
 
-def generate_record(name, payload, reason, _files = "") -> dict:
+def generate_record(email, username, reason, _files = "") -> dict:
     record = {
-        "name": name,
-        "email": payload.get("email", ""),
-        "username": payload.get("username", ""),
+        "email": email,
+        "username": username,
         "files": _files,
         "reason": reason,
     }
@@ -260,25 +267,12 @@ def main():
             payload = build_instructor_payload(processor.driver, api_client)
             full_name = payload.get("first_name", "") + " " + payload.get("last_name", "")
             email_hint = payload.get("email", "")
+            username = payload.get('username', '')
 
-            name = clean_username(full_name)
-            if name == "unknown":
-                name = f"No username ({email_hint})" if email_hint else "No username"
-                name = name.replace('"Rex"', "")
-
-
-            # check if the instructor's folder already exists
-            owner_folder = os.path.join(downloads_dir, name)
-            if os.path.exists(owner_folder):
-                logger.info(f"Owner folder already exists, skipping: {name}")
-                continue
-
-            # create a local directory for saving instructor's files
-            os.makedirs(owner_folder, exist_ok=True)
             all_files = processor.driver.find_elements(By.XPATH, "//a[@title= 'View']")
             if not all_files:
-                logger.info(f"No files found for instructor: {name}")
-                record = generate_record(name, payload, "no_files")
+                logger.info(f"No files found for instructor: {username}")
+                record = generate_record(email_hint, username, "no_files_found")
                 append_to_csv(csv_log_path, record)
                 continue
 
@@ -287,7 +281,7 @@ def main():
             for file_link in all_files:
                 file_url = file_link.get_attribute("href")
                 file_name = str(file_link.text.strip()) or "unknown_file"
-                local_path = os.path.join(owner_folder, file_name)
+                local_path = os.path.join(downloads_dir, file_name)
                 if os.path.exists(local_path):
                     logger.info(f"File already exists, skipping download: {file_name}")
                     file_paths.append(local_path)
@@ -300,16 +294,16 @@ def main():
                         logger.info(f"Downloaded: {file_name}")
                         file_paths.append(local_path)
                     else:
-                        logger.error(f"Failed to download {file_url} for instructor {name}")
+                        logger.error(f"Failed to download {file_url} for instructor {username}")
                 except Exception as e:
-                    logger.error(f"Exception downloading {file_url} for instructor {name}: {e}")
+                    logger.error(f"Exception downloading {file_url} for instructor {username}: {e}")
 
             # Validate instructor data before attempting API creation
             missing_fields = instructor_is_valid(payload)
             if missing_fields:
                 missing_reason = f"missing fields: {', '.join(missing_fields)}"
-                logger.warning(f"Incomplete data for instructor {name}, skipping API create ({missing_reason})")
-                record = generate_record(name, payload, missing_reason)
+                logger.warning(f"Incomplete data for instructor {username}, skipping API create ({missing_reason})")
+                record = generate_record(email_hint, username, missing_reason)
                 append_to_csv(csv_log_path, record)
                 continue
 
@@ -319,21 +313,21 @@ def main():
                 if create_status == "exists":
                     pass
                 else:
-                    record = generate_record(name, payload, "creation_failed")
+                    record = generate_record(email_hint, username, "creation_failed")
                     append_to_csv(csv_log_path, record)
                     continue
 
             # Find instructor using email for making another API call for uploading documents
             instructor_entry = find_instructor_by_email(api_client, payload.get("email", ""))
             if not instructor_entry:
-                record = generate_record(name, payload, "not_found_in_list")
+                record = generate_record(email_hint, username, "not_found_in_list")
                 append_to_csv(csv_log_path, record)
                 continue
 
             # Extract instructor Enroll Nationwide ID for uploading documents; if not found, log and skip uploads
             instructor_id = str(instructor_entry.get("id") or "").strip()
             if not instructor_id:
-                record = generate_record(name, payload, "no_instructor_id")
+                record = generate_record(email_hint, username, "no_instructor_id")
                 append_to_csv(csv_log_path, record)
                 continue
 
@@ -341,11 +335,11 @@ def main():
             documents = instructor_entry.get("documents")
             has_remote_documents = isinstance(documents, list) and len(documents) > 0
             if create_status == "exists" and has_remote_documents:
-                logger.info(f"Skipping uploads for existing instructor {name}: documents already exist")
+                logger.info(f"Skipping uploads for existing instructor {username}: documents already exist")
                 continue
 
             if not file_paths:
-                record = generate_record(name, payload, "no_files_to_upload")
+                record = generate_record(email_hint, username, "no_files_to_upload")
                 append_to_csv(csv_log_path, record)
                 continue
 
@@ -357,7 +351,7 @@ def main():
                     continue
 
             if failed_uploads:
-                record = generate_record(name, payload, "failed_uploads", _files="; ".join(failed_uploads))
+                record = generate_record(email_hint, username, "failed_uploads", _files="; ".join(failed_uploads))
                 append_to_csv(csv_log_path, record)
 
             # add url to done_urls.txt for avoiding re-processing
