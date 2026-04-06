@@ -249,6 +249,14 @@ def main():
             all_instructors_urls.append(_url)
 
         for url in all_instructors_urls:
+            # Check if the instructor's URL has already been processed to avoid duplicates
+            done_urls_path = os.path.join(downloads_dir, "done_urls.txt")
+            if os.path.exists(done_urls_path):
+                with open(done_urls_path, "r", encoding="utf-8") as f:
+                    done_urls = set(line.strip() for line in f)
+                if url in done_urls:
+                    logger.info(f"Skipping already processed URL: {url}")
+                    continue
             processor.driver.get(url)
             payload = build_instructor_payload(processor.driver, api_client)
             full_name = payload.get("first_name", "") + " " + payload.get("last_name", "")
@@ -257,7 +265,7 @@ def main():
             name = clean_username(full_name)
             if name == "unknown":
                 name = f"No username ({email_hint})" if email_hint else "No username"
-                name = name.replace("'", "").replace('"', '')
+                name = name.replace('"Rex"', "")
 
 
             # check if the instructor's folder already exists
@@ -353,16 +361,13 @@ def main():
                 record = generate_record(name, payload, "failed_uploads", _files="; ".join(failed_uploads))
                 append_to_csv(csv_log_path, record)
 
+            # add url to done_urls.txt for avoiding re-processing
+            with open(done_urls_path, "a", encoding="utf-8") as f:
+                f.write(url + "\n")
+
         processor.cleanup()
         print("\nAll files processed and sent to enrollnationwide API.\n")
 
-        # delete records folder after processing
-        if keep_instructors_files == 0:
-            try:
-                shutil.rmtree(downloads_dir)
-                logger.info(f"Deleted local folder {downloads_dir} after processing all instructors")
-            except Exception as e:
-                logger.error(f"Failed to delete local folder {downloads_dir}: {e}")
 
     except Exception as e:
         logger.error(f"Unexpected error in main: {e}")
