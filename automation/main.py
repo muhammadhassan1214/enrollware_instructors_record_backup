@@ -227,7 +227,6 @@ def generate_record(name, payload, reason, _files = "") -> dict:
 
 
 def main():
-    keep_instructors_files = int(input("\nDo you want to keep instructor' data locally?\nIf Yes enter 1 If No enter 0: "))
     all_instructors_urls = []
     url = "https://www.enrollware.com/admin/tc-user-list.aspx"
     processor = CreateInstructorsBackup()
