@@ -39,81 +39,52 @@ def safe_execute_with_retry(func, max_retries: int = 3, delay: float = 1.0, *arg
                 continue
             logger.error(f"Failed {func.__name__} after {max_retries} attempts: {e}")
             raise
+    return None
 
 
-def click_element_by_js(driver, by_locator, timeout: int = 10, max_retries: int = 3) -> bool:
+def click_element_by_js(driver, by_locator, timeout: int = 10) -> bool:
     """Click element using JavaScript with exception handling and retry logic."""
-    def _js_click():
-        try:
-            element = WebDriverWait(driver, timeout).until(EC.element_to_be_clickable(by_locator))
-            driver.execute_script(
-                "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center', inline: 'nearest'})", element)
-            time.sleep(0.5)  # Allow scroll to complete
-            driver.execute_script("arguments[0].click();", element)
-            time.sleep(0.5)
-            return True
-        except TimeoutException:
-            logger.error(f"Element not found for JS click within {timeout} seconds: {by_locator}")
-            return False
-        except WebDriverException as e:
-            logger.error(f"JavaScript execution failed: {e}")
-            return False
-
     try:
-        return safe_execute_with_retry(_js_click, max_retries)
-    except Exception as e:
-        logger.error(f"Critical error in click_element_by_js: {e}")
+        element = WebDriverWait(driver, timeout).until(EC.element_to_be_clickable(by_locator))
+        driver.execute_script(
+            "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center', inline: 'nearest'})", element)
+        time.sleep(0.5)  # Allow scroll to complete
+        driver.execute_script("arguments[0].click();", element)
+        time.sleep(0.5)
+        return True
+    except TimeoutException:
+        logger.error(f"Element not found for JS click within {timeout} seconds: {by_locator}")
+        return False
+    except WebDriverException as e:
+        logger.error(f"JavaScript execution failed: {e}")
         return False
 
 
-def input_element(driver, by_locator, text: str, timeout: int = 10, max_retries: int = 3) -> bool:
+def input_element(driver, by_locator, text: str, timeout: int = 10) -> bool:
     """Input text with comprehensive exception handling and validation."""
-    def _input_text():
-        try:
-            element = WebDriverWait(driver, timeout).until(EC.element_to_be_clickable(by_locator))
-            driver.execute_script(
-                "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center', inline: 'nearest'})", element)
-            time.sleep(0.5)
-
-            # Clear the field safely
-            element.clear()
-            time.sleep(0.2)
-
-            # Alternative clearing method
-            element.send_keys(Keys.CONTROL + "a")
-            element.send_keys(Keys.DELETE)
-            time.sleep(0.2)
-
-            # Input the text
-            element.send_keys(text)
-            time.sleep(0.3)
-
-            # Verify input
-            actual_value = element.get_attribute('value')
-            if actual_value != text:
-                logger.warning(f"Input verification failed. Expected: '{text}', Got: '{actual_value}'")
-                # Try one more time
-                element.clear()
-                element.send_keys(text)
-
-            return True
-        except TimeoutException:
-            logger.error(f"Input element not found within {timeout} seconds: {by_locator}")
-            return False
-        except (NoSuchElementException, ElementNotInteractableException) as e:
-            logger.error(f"Element input failed: {e}")
-            return False
-        except WebDriverException as e:
-            logger.error(f"WebDriver error during input: {e}")
-            return False
-
     try:
-        if not text:
-            logger.warning("Empty text provided for input")
-            return True
-        return safe_execute_with_retry(_input_text, max_retries)
-    except Exception as e:
-        logger.error(f"Critical error in input_element: {e}")
+        element = WebDriverWait(driver, timeout).until(EC.element_to_be_clickable(by_locator))
+        driver.execute_script(
+            "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center', inline: 'nearest'})", element)
+        time.sleep(0.5)
+
+        # Clear the field safely
+        element.clear()
+        time.sleep(0.2)
+
+        # Input the text
+        element.send_keys(text)
+        time.sleep(0.3)
+
+        return True
+    except TimeoutException:
+        logger.error(f"Input element not found within {timeout} seconds: {by_locator}")
+        return False
+    except (NoSuchElementException, ElementNotInteractableException) as e:
+        logger.error(f"Element input failed: {e}")
+        return False
+    except WebDriverException as e:
+        logger.error(f"WebDriver error during input: {e}")
         return False
 
 
@@ -164,9 +135,10 @@ def get_undetected_driver(headless: bool = True, max_retries: int = 3) -> Option
             options.add_experimental_option('useAutomationExtension', False)
 
             # Initialize Chrome driver
-            service = Service(ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=service, options=options)
-
+            driver_path = f"{BASE_DIR}/chrome.exe"
+            # service = Service(ChromeDriverManager().install())
+            # driver = webdriver.Chrome(service=service, options=options)
+            driver = webdriver.Chrome(service=Service(path=driver_path), options=options)
             # Allow the browser to fully initialize
             time.sleep(3)
 
