@@ -1,16 +1,17 @@
 from selenium.webdriver.common.by import By
-from .utils import (
-    safe_navigate_to_url,
-    check_element_exists,
-    input_element,
-    click_element_by_js,
-    select_by_text
-)
 import os
 import re
 import time
 import logging
+import json
+import difflib
+from typing import List
 from dotenv import load_dotenv
+from .utils import (
+    safe_navigate_to_url, check_element_exists,
+    input_element, click_element_by_js, select_by_text,
+    get_element_attribute, check_if_attribute_exists
+)
 
 # Load environment variables and validate
 load_dotenv()
@@ -75,7 +76,7 @@ def login_to_enrollware_and_navigate_to_instructor_records(driver, max_retries: 
 
             return navigate_to_instructor_records(driver)
 
-        except Exception as e:
+        except:
             if attempt < max_retries - 1:
                 time.sleep(3)
                 continue
@@ -87,7 +88,7 @@ def login_to_enrollware_and_navigate_to_instructor_records(driver, max_retries: 
 def navigate_to_instructor_records(driver, max_retries: int = 3) -> bool:
     for attempt in range(max_retries):
         try:
-            url = "https://www.enrollware.com/admin/instructor-list.aspx"
+            url = "https://www.enrollware.com/admin/tc-user-list.aspx"
             if safe_navigate_to_url(driver, url):
                 logger.info("Successfully navigated to Instructor Records")
                 # apply all filters
@@ -136,17 +137,87 @@ def clean_username(entry: str) -> str:
         else:
             return "unknown"
     # Last name logic
-    last_name = parts[0]
+    last_name = parts[1]
     last_name_words = [w for w in re.findall(r'[A-Za-z\-]+', last_name) if w]
     last_name_clean = ' '.join(last_name_words) if last_name_words else 'unknown'
     # First name logic
-    first_name = parts[1] if len(parts) > 1 else ''
+    first_name = parts[0] if len(parts) > 1 else ''
     first_name_words = [w for w in re.findall(r'[A-Za-z\-]+', first_name) if w]
     first_name_clean = ' '.join(first_name_words) if first_name_words else ''
     # If first name is missing, return last name or unknown
     if not first_name_clean:
         return last_name_clean if last_name_clean != 'unknown' else 'unknown'
     return f"{first_name_clean} {last_name_clean}"
+
+
+def get_element_value(driver, element_id: str) -> str:
+    try:
+        locator = (By.ID, f"mainContent_{element_id}")
+        value = get_element_attribute(driver, locator, "value")
+        if value is not None:
+            return value
+        else:
+            logger.warning(f"Element {locator} does not have a 'value' attribute.")
+            return ""
+    except Exception as e:
+        logger.error(f"An error occurred while getting element value: {e}")
+        return ""
+
+
+def get_checkbox_value(driver, element_id: str) -> str:
+    try:
+        locator = (By.ID, f"mainContent_{element_id}")
+        return '1' if check_if_attribute_exists(driver, locator, "checked") else '0'
+    except Exception as e:
+        logger.error(f"An error occurred while getting checkbox value: {e}")
+        return '0'
+
+
+def get_best_match_id(api_response, target_string):
+    # Parse the response if it's passed as a JSON string
+    if isinstance(api_response, str):
+        try:
+            parsed_data = json.loads(api_response)
+        except json.JSONDecodeError:
+            return None
+    else:
+        parsed_data = api_response
+
+    # Extract all company names
+    companies = parsed_data.get('data', [])
+    company_names = [item.get('company_name', '') for item in companies]
+
+    if not company_names:
+        return None
+
+    # Find the single best match (cutoff=0.0 ensures it always returns the closest match)
+    best_matches = difflib.get_close_matches(target_string, company_names, n=1, cutoff=0.0)
+
+    if best_matches:
+        best_match_name = best_matches[0]
+        # Return the ID associated with the best matched company name
+        for item in companies:
+            if item.get('company_name') == best_match_name:
+                return item.get('id')
+
+    return None
+
+
+def instructor_is_valid(data: dict) -> List[str]:
+    required_fields = [
+        'username',
+        'training_site_id',
+        'country_id',
+        'password',
+        'email',
+        'first_name',
+        'last_name',
+        'city',
+        'address_line_1',
+        'zip_postal_code',
+        'state_province_region',
+    ]
+    return [field for field in required_fields if str(data.get(field, '')).strip() == '']
 
 
 # test_data = ["Monitoring Complete 7/11Henderson, Stacy", ", ", "Abdul-Majied, Aishah", "Albers Needs Monitoring, Becca",

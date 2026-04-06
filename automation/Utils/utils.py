@@ -291,24 +291,7 @@ def safe_navigate_to_url(driver, url: str, max_retries: int = 3) -> bool:
     logger.error(f"Failed to navigate to {url} after {max_retries} attempts")
     return False
 
-
-def get_element_attribute(driver, by_locator, attribute: str, timeout: int = 10, default: str = "") -> str:
-    """Get element attribute with exception handling and default value."""
-    try:
-        element = WebDriverWait(driver, timeout).until(EC.presence_of_element_located(by_locator))
-        attr_value = element.get_attribute(attribute)
-        return attr_value if attr_value else default
-    except TimeoutException:
-        logger.warning(f"Element not found for attribute extraction within {timeout} seconds: {by_locator}")
-        return default
-    except (NoSuchElementException, WebDriverException) as e:
-        logger.error(f"Error getting element attribute: {e}")
-        return default
-    except Exception as e:
-        logger.error(f"Unexpected error in get_element_attribute: {e}")
-        return default
-
-def get_element_text(driver, by_locator, timeout: int = 10, default: str = "") -> str:
+def get_element_text(driver, by_locator, timeout: int = 1, default: str = "") -> str:
     """Get element text with exception handling and default value."""
     try:
         element = WebDriverWait(driver, timeout).until(EC.presence_of_element_located(by_locator))
@@ -323,3 +306,29 @@ def get_element_text(driver, by_locator, timeout: int = 10, default: str = "") -
     except Exception as e:
         logger.error(f"Unexpected error in get_element_text: {e}")
         return default
+
+
+def get_element_attribute(driver, by_locator, attribute: str, timeout: int = 1) -> Optional[str]:
+    """Get element attribute with exception handling."""
+    try:
+        element = WebDriverWait(driver, timeout).until(EC.visibility_of_element_located(by_locator))
+        return element.get_attribute(attribute)
+    except TimeoutException:
+        logger.error(f"Element not found within {timeout} seconds: {by_locator}")
+        return ''
+    except WebDriverException as e:
+        logger.error(f"Error getting element attribute: {e}")
+        return ''
+
+
+def check_if_attribute_exists(driver, by_locator, attribute: str, timeout: int = 1) -> bool:
+    """Check if element attribute exists with exception handling."""
+    try:
+        element = WebDriverWait(driver, timeout).until(EC.visibility_of_element_located(by_locator))
+        return element.get_attribute(attribute) is not None
+    except TimeoutException:
+        logger.error(f"Element not found within {timeout} seconds: {by_locator}")
+        return False
+    except WebDriverException as e:
+        logger.error(f"Error checking element attribute: {e}")
+        return False
