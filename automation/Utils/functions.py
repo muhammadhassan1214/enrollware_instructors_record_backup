@@ -220,7 +220,41 @@ def instructor_is_valid(data: dict) -> List[str]:
     return [field for field in required_fields if str(data.get(field, '')).strip() == '']
 
 
-# test_data = ["Monitoring Complete 7/11Henderson, Stacy", ", ", "Abdul-Majied, Aishah", "Albers Needs Monitoring, Becca",
-#              "Augustin Monitoring Complete, Francesca", "Zingarelli, Samantha Needs Monitoring", "ZACHARIAS, JOSEPH",
-#              "Williams-Patterson, Nickesha", "Williams Monitoring Complete (Completed with Nathan Shell), Joey",
-#              "Williams, Ann Marie (Complete and sent to Nathan)", "smith CODEBLUE CPR CLASSES, jareem"]
+def extract_instructors_list(response) -> list:
+    if isinstance(response, list):
+        return response
+    if isinstance(response, dict):
+        data = response.get("data")
+        if isinstance(data, dict):
+            instructors_list = data.get("data")
+            if isinstance(instructors_list, list):
+                return instructors_list
+    return []
+
+
+def extract_document_filenames(documents) -> set:
+    """Return normalized remote document file names from instructor documents list."""
+    names = set()
+    if not isinstance(documents, list):
+        return names
+    for document in documents:
+        if not isinstance(document, dict):
+            continue
+        document_path = str(document.get("document_path") or "").strip()
+        if not document_path:
+            continue
+        names.add(os.path.basename(document_path).strip().lower())
+    return names
+
+
+def extract_response_message(response) -> str:
+    if isinstance(response, dict):
+        message = response.get("message")
+        if message:
+            return str(message)
+        data = response.get("data")
+        if isinstance(data, dict):
+            nested_message = data.get("message")
+            if nested_message:
+                return str(nested_message)
+    return ""

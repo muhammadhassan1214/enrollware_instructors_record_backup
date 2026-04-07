@@ -13,8 +13,9 @@ from enroll_nationwide_api.api_endpoints import APIEndpoints
 from Utils.utils import get_undetected_driver, get_element_text
 from Utils.functions import (
     login_to_enrollware_and_navigate_to_instructor_records,
-    get_element_value, get_checkbox_value,
-    instructor_is_valid, get_best_match_id
+    get_element_value, get_checkbox_value, extract_instructors_list,
+    instructor_is_valid, get_best_match_id, extract_document_filenames,
+    extract_response_message
 )
 
 # Ensure the parent directory is in sys.path for reliable imports
@@ -86,26 +87,13 @@ def build_instructor_payload(driver, api_client) -> dict:
     return payload
 
 
-def _extract_response_message(response) -> str:
-    if isinstance(response, dict):
-        message = response.get("message")
-        if message:
-            return str(message)
-        data = response.get("data")
-        if isinstance(data, dict):
-            nested_message = data.get("message")
-            if nested_message:
-                return str(nested_message)
-    return ""
-
-
 def create_instructor(api_client: APIClient, payload: dict) -> str:
     """Create instructor without files; returns: created, exists, or failed."""
     username = payload.get("username", "")
     duplicate_msg = "The username has already been taken."
     try:
         response = api_client.post(APIEndpoints.INSTRUCTOR_CREATE, payload=payload)
-        message = _extract_response_message(response)
+        message = extract_response_message(response)
         if duplicate_msg in message:
             logger.info(f"Skipping existing instructor {username}: {duplicate_msg}")
             return "exists"
@@ -120,24 +108,12 @@ def create_instructor(api_client: APIClient, payload: dict) -> str:
         return "failed"
 
 
-def _extract_instructors_list(response) -> list:
-    if isinstance(response, list):
-        return response
-    if isinstance(response, dict):
-        data = response.get("data")
-        if isinstance(data, dict):
-            instructors_list = data.get("data")
-            if isinstance(instructors_list, list):
-                return instructors_list
-    return []
-
-
 def find_instructor_by_email(api_client: APIClient, email: str) -> Optional[dict]:
     time.sleep(0.5)
     target = (email or "").strip().lower()
     try:
-        response = api_client.get(APIEndpoints.INSTRUCTOR_LIST)
-        for entry in _extract_instructors_list(response):
+        response = api_client.get(APIEndpoints.INSTRUCTOR_LIST, params='per_page=1000')
+        for entry in extract_instructors_list(response):
             if not isinstance(entry, dict):
                 continue
             entry_username = str(entry.get("email", "")).strip().lower()
@@ -174,7 +150,6 @@ def upload_document(api_client: APIClient, instructor_id: str, file_path: str) -
         if os.path.exists(file_path):
             try:
                 os.remove(file_path)
-                logger.info(f"Deleted local file after upload attempt: {file_path}")
             except Exception as delete_exc:
                 logger.warning(f"Could not delete local file {file_path}: {delete_exc}")
 
@@ -269,35 +244,6 @@ def main():
             email_hint = payload.get("email", "")
             username = payload.get('username', '')
 
-            all_files = processor.driver.find_elements(By.XPATH, "//a[@title= 'View']")
-            if not all_files:
-                logger.info(f"No files found for instructor: {username}")
-                record = generate_record(email_hint, username, "no_files_found")
-                append_to_csv(csv_log_path, record)
-                continue
-
-            # Download instructor's files from Enrollware and save to local directory
-            file_paths = []
-            for file_link in all_files:
-                file_url = file_link.get_attribute("href")
-                file_name = str(file_link.text.strip()) or "unknown_file"
-                local_path = os.path.join(downloads_dir, file_name)
-                if os.path.exists(local_path):
-                    logger.info(f"File already exists, skipping download: {file_name}")
-                    file_paths.append(local_path)
-                    continue
-                try:
-                    response = requests.get(file_url, stream=True)
-                    if response.status_code == 200:
-                        with open(local_path, "wb") as f:
-                            shutil.copyfileobj(response.raw, f)
-                        logger.info(f"Downloaded: {file_name}")
-                        file_paths.append(local_path)
-                    else:
-                        logger.error(f"Failed to download {file_url} for instructor {username}")
-                except Exception as e:
-                    logger.error(f"Exception downloading {file_url} for instructor {username}: {e}")
-
             # Validate instructor data before attempting API creation
             missing_fields = instructor_is_valid(payload)
             if missing_fields:
@@ -331,23 +277,64 @@ def main():
                 append_to_csv(csv_log_path, record)
                 continue
 
-            # Check if the instructor's documents are already uploaded
-            documents = instructor_entry.get("documents")
-            has_remote_documents = isinstance(documents, list) and len(documents) > 0
-            if create_status == "exists" and has_remote_documents:
-                logger.info(f"Skipping uploads for existing instructor {username}: documents already exist")
-                continue
-
-            if not file_paths:
-                record = generate_record(email_hint, username, "no_files_to_upload")
+            all_files = processor.driver.find_elements(By.XPATH, "//a[@title= 'View']")
+            if not all_files:
+                logger.info(f"No files found for instructor: {username}")
+                record = generate_record(email_hint, username, "no_files_found")
                 append_to_csv(csv_log_path, record)
                 continue
 
-            # Upload documents to enrollnationwide API; if any upload fails, log the failed files and reason
+            documents = instructor_entry.get("documents")
+            remote_document_names = extract_document_filenames(documents)
+
+            # Keep only files that are not already present remotely by filename match.
+            file_paths = []
+            for file_link in all_files:
+                file_url = str(file_link.get_attribute("href") or "").strip()
+                file_name = str(file_link.text or "").strip() or os.path.basename(file_url.split("?")[0]) or "unknown_file"
+                normalized_name = file_name.lower()
+                if normalized_name in remote_document_names:
+                    logger.info(f"Skipping already uploaded file for {username}: {file_name}")
+                    continue
+                local_path = os.path.join(downloads_dir, file_name)
+                file_paths.append({"path": local_path, "name": file_name, "url": file_url})
+
+            if not file_paths:
+                logger.info(f"All files already exist remotely for instructor: {username}")
+                record = generate_record(email_hint, username, "all_files_already_present")
+                append_to_csv(csv_log_path, record)
+                continue
+
+            # Download missing files only; keep any existing local copy for upload.
+            download_failures = []
+            for file_info in file_paths:
+                if os.path.exists(file_info["path"]):
+                    logger.info(f"File already exists locally, skipping download: {file_info['name']}")
+                    continue
+                try:
+                    response = requests.get(file_info["url"], stream=True, timeout=60)
+                    if response.status_code == 200:
+                        with open(file_info["path"], "wb") as f:
+                            shutil.copyfileobj(response.raw, f)
+                        logger.info(f"Downloaded: {file_info['name']}")
+                    else:
+                        logger.error(f"Failed to download {file_info['url']} for instructor {username}")
+                        download_failures.append(file_info["name"])
+                except Exception as e:
+                    logger.error(f"Exception downloading {file_info['url']} for instructor {username}: {e}")
+                    download_failures.append(file_info["name"])
+
+            upload_candidates = [item for item in file_paths if os.path.exists(item["path"])]
+            if not upload_candidates:
+                record = generate_record(email_hint, username, "no_files_to_upload", _files="; ".join(download_failures))
+                append_to_csv(csv_log_path, record)
+                continue
+
+            # Upload documents; if any upload fails, log failed file names only.
             failed_uploads = []
-            for path in file_paths:
-                if not upload_document(api_client, instructor_id, path):
-                    failed_uploads.append(os.path.basename(path))
+            for item in upload_candidates:
+                if not upload_document(api_client, instructor_id, item["path"]):
+                    failed_uploads.append(item["name"])
                     continue
 
             if failed_uploads:
